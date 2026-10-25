@@ -144,20 +144,6 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0):
 
     elif provider == 'google':
         from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_core.outputs import ChatGeneration, ChatResult
-
-        class ChatGoogleTextContent(ChatGoogleGenerativeAI):
-            # Gemini 3+ devolve content como lista de blocos; evaluate.py e metrics.py esperam string
-            def _generate(self, *args, **kwargs) -> ChatResult:
-                result = super()._generate(*args, **kwargs)
-                result.generations = [
-                    ChatGeneration(
-                        message=g.message.model_copy(update={"content": str(g.message.text)}),
-                        generation_info=g.generation_info,
-                    )
-                    for g in result.generations
-                ]
-                return result
 
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
@@ -166,7 +152,7 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0):
                 "Obtenha uma chave em: https://aistudio.google.com/app/apikey"
             )
 
-        return ChatGoogleTextContent(
+        return ChatGoogleGenerativeAI(
             model=model_name,
             temperature=temperature,
             google_api_key=api_key
