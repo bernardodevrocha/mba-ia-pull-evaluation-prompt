@@ -1,24 +1,3 @@
-"""
-Módulo de métricas customizadas para avaliação de prompts.
-
-Este módulo implementa métricas gerais e específicas para Bug to User Story:
-
-MÉTRICAS GERAIS (3):
-1. F1-Score: Balanceamento entre Precision e Recall
-2. Clarity: Clareza e estrutura da resposta
-3. Precision: Informações corretas e relevantes
-
-MÉTRICAS ESPECÍFICAS PARA BUG TO USER STORY (4):
-4. Tone Score: Tom profissional e empático
-5. Acceptance Criteria Score: Qualidade dos critérios de aceitação
-6. User Story Format Score: Formato correto (Como... Eu quero... Para que...)
-7. Completeness Score: Completude e contexto técnico
-
-Suporta múltiplos providers de LLM: OpenAI e Google Gemini.
-Configure o provider em LLM_PROVIDER e os modelos em LLM_MODEL / EVAL_MODEL,
-no arquivo .env, consultando a documentação oficial do provider escolhido.
-"""
-
 import os
 import json
 import re
@@ -31,22 +10,15 @@ load_dotenv()
 
 
 def get_evaluator_llm():
-    """
-    Retorna o LLM configurado para avaliação.
-    Suporta OpenAI e Google Gemini baseado no .env
-    """
+    """Retorna o LLM de avaliação (EVAL_MODEL)."""
     return get_eval_llm(temperature=0)
 
 
 def extract_json_from_response(response_text: str) -> Dict[str, Any]:
-    """
-    Extrai JSON de uma resposta de LLM que pode conter texto adicional.
-    """
+    """Extrai o JSON da resposta do LLM (mesmo com texto em volta)."""
     try:
-        # Tentar parsear diretamente
         return json.loads(response_text)
     except json.JSONDecodeError:
-        # Tentar encontrar JSON no meio do texto
         start = response_text.find('{')
         end = response_text.rfind('}') + 1
 
@@ -57,31 +29,12 @@ def extract_json_from_response(response_text: str) -> Dict[str, Any]:
             except json.JSONDecodeError:
                 pass
 
-        # Se não conseguir extrair, retornar valores default
         print(f"⚠️  Não foi possível extrair JSON da resposta: {response_text[:200]}...")
         return {"score": 0.0, "reasoning": "Erro ao processar resposta"}
 
 
 def evaluate_f1_score(question: str, answer: str, reference: str) -> Dict[str, Any]:
-    """
-    Calcula F1-Score usando LLM-as-Judge.
-
-    F1-Score = 2 * (Precision * Recall) / (Precision + Recall)
-
-    Args:
-        question: Pergunta feita pelo usuário
-        answer: Resposta gerada pelo prompt
-        reference: Resposta esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning:
-        {
-            "score": 0.95,
-            "precision": 0.9,
-            "recall": 0.99,
-            "reasoning": "Explicação do LLM..."
-        }
-    """
+    """F1-Score: combina precision e recall da resposta em relação à referência."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em medir a qualidade de respostas geradas por IA.
 
@@ -132,7 +85,6 @@ NÃO adicione nenhum texto antes ou depois do JSON.
         precision = float(result.get("precision", 0.0))
         recall = float(result.get("recall", 0.0))
 
-        # Calcular F1-Score
         if (precision + recall) > 0:
             f1_score = 2 * (precision * recall) / (precision + recall)
         else:
@@ -156,27 +108,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_clarity(question: str, answer: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia a clareza e estrutura da resposta usando LLM-as-Judge.
-
-    Critérios:
-    - Organização e estrutura clara
-    - Linguagem simples e direta
-    - Ausência de ambiguidade
-    - Fácil de entender
-
-    Args:
-        question: Pergunta feita pelo usuário
-        answer: Resposta gerada pelo prompt
-        reference: Resposta esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning:
-        {
-            "score": 0.92,
-            "reasoning": "Explicação do LLM..."
-        }
-    """
+    """Clarity: organização, linguagem, ambiguidade e concisão da resposta."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em medir a CLAREZA de respostas geradas por IA.
 
@@ -242,27 +174,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_precision(question: str, answer: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia a precisão da resposta usando LLM-as-Judge.
-
-    Critérios:
-    - Ausência de informações inventadas (alucinações)
-    - Resposta focada na pergunta
-    - Informações corretas e verificáveis
-
-    Args:
-        question: Pergunta feita pelo usuário
-        answer: Resposta gerada pelo prompt
-        reference: Resposta esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning:
-        {
-            "score": 0.98,
-            "reasoning": "Explicação do LLM..."
-        }
-    """
-    
+    """Precision: ausência de alucinações, foco e correção factual."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em detectar PRECISÃO e ALUCINAÇÕES em respostas de IA.
 
@@ -329,23 +241,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_tone_score(bug_report: str, user_story: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia o tom da user story (profissional e empático).
-
-    Critérios específicos para Bug to User Story:
-    - Tom profissional mas não excessivamente técnico
-    - Empatia com o usuário afetado pelo bug
-    - Foco em valor de negócio, não apenas correção técnica
-    - Linguagem positiva (o que o usuário QUER fazer, não só o que não funciona)
-
-    Args:
-        bug_report: Descrição do bug original
-        user_story: User story gerada pelo prompt
-        reference: User story esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning
-    """
+    """Tom: profissional, empático e focado em valor (não usada no evaluate.py)."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em User Stories ágeis.
 
@@ -414,24 +310,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_acceptance_criteria_score(bug_report: str, user_story: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia a qualidade dos critérios de aceitação.
-
-    Critérios específicos:
-    - Usa formato Given-When-Then ou similar estruturado
-    - Critérios são específicos e testáveis
-    - Quantidade adequada (3-7 critérios idealmente)
-    - Cobertura completa do bug e solução
-    - Incluem cenários de edge case quando relevante
-
-    Args:
-        bug_report: Descrição do bug original
-        user_story: User story gerada pelo prompt
-        reference: User story esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning
-    """
+    """Qualidade dos critérios de aceitação (não usada no evaluate.py)."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em Critérios de Aceitação de User Stories.
 
@@ -502,23 +381,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_user_story_format_score(bug_report: str, user_story: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia se a user story segue o formato padrão correto.
-
-    Formato esperado:
-    - "Como um [tipo de usuário]"
-    - "Eu quero [ação/funcionalidade]"
-    - "Para que [benefício/valor]"
-    - Critérios de Aceitação claramente separados
-
-    Args:
-        bug_report: Descrição do bug original
-        user_story: User story gerada pelo prompt
-        reference: User story esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning
-    """
+    """Formato "Como um... eu quero... para que..." (não usada no evaluate.py)."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em formato de User Stories ágeis.
 
@@ -592,22 +455,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
 
 def evaluate_completeness_score(bug_report: str, user_story: str, reference: str) -> Dict[str, Any]:
-    """
-    Avalia a completude da user story em relação ao bug.
-
-    Critérios específicos baseados na complexidade do bug:
-    - Bugs simples: cobre o problema básico
-    - Bugs médios: inclui contexto técnico relevante
-    - Bugs complexos: aborda múltiplos aspectos, impacto, tasks técnicas
-
-    Args:
-        bug_report: Descrição do bug original
-        user_story: User story gerada pelo prompt
-        reference: User story esperada (ground truth)
-
-    Returns:
-        Dict com score e reasoning
-    """
+    """Completude da user story em relação ao bug (não usada no evaluate.py)."""
     evaluator_prompt = f"""
 Você é um avaliador especializado em completude de User Stories derivadas de bugs.
 
@@ -691,9 +539,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
         }
 
 
-# Exemplo de uso e testes
 if __name__ == "__main__":
-    # Mostrar provider configurado
     provider = os.getenv("LLM_PROVIDER", "openai")
     eval_model = os.getenv("EVAL_MODEL", "(não definido)")
 
@@ -707,7 +553,6 @@ if __name__ == "__main__":
     print("PARTE 1: MÉTRICAS GERAIS")
     print("=" * 70)
 
-    # Teste das métricas gerais
     test_question = "Qual o horário de funcionamento da loja?"
     test_answer = "A loja funciona de segunda a sexta das 9h às 18h."
     test_reference = "Horário de funcionamento: Segunda a Sexta 9:00-18:00, Sábado 9:00-14:00"
@@ -733,7 +578,6 @@ if __name__ == "__main__":
     print("PARTE 2: MÉTRICAS ESPECÍFICAS PARA BUG TO USER STORY")
     print("=" * 70)
 
-    # Teste das métricas específicas de Bug to User Story
     test_bug = "Botão de adicionar ao carrinho não funciona no produto ID 1234."
     test_user_story = """Como um cliente navegando na loja, eu quero adicionar produtos ao meu carrinho de compras, para que eu possa continuar comprando e finalizar minha compra depois.
 
@@ -744,7 +588,7 @@ Critérios de Aceitação:
 - E devo ver uma confirmação visual
 - E o contador do carrinho deve ser atualizado"""
 
-    test_reference_story = test_user_story  # Usando o mesmo para teste
+    test_reference_story = test_user_story
 
     print("\n4. Tone Score (Tom profissional e empático):")
     tone_result = evaluate_tone_score(test_bug, test_user_story, test_reference_story)

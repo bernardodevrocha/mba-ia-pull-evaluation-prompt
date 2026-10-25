@@ -1,22 +1,3 @@
-"""
-Script COMPLETO para avaliar prompts otimizados.
-
-Este script:
-1. Carrega o dataset de avaliação do arquivo .jsonl (datasets/bug_to_user_story.jsonl)
-2. Cria (ou reutiliza) o dataset de avaliação no LangSmith
-3. Puxa o prompt otimizado do LangSmith Prompt Hub (fonte única de verdade)
-4. Roda o prompt contra o dataset como um EXPERIMENTO do LangSmith
-5. Calcula 5 métricas por exemplo (Helpfulness, Correctness, F1-Score, Clarity, Precision)
-6. Publica cada nota como feedback no experimento, visível no dashboard do LangSmith
-7. Exibe o resumo no terminal e imprime o link direto do experimento
-
-Suporta múltiplos providers de LLM: OpenAI e Google Gemini.
-Os modelos não são fixados aqui: defina LLM_MODEL e EVAL_MODEL no .env,
-consultando a documentação oficial do provider escolhido.
-
-Configure o provider no arquivo .env através da variável LLM_PROVIDER.
-"""
-
 import os
 import sys
 import json
@@ -30,10 +11,8 @@ from metrics import evaluate_f1_score, evaluate_clarity, evaluate_precision
 
 load_dotenv()
 
-# Nota mínima exigida em CADA métrica e também na média geral
 APPROVAL_THRESHOLD = 0.8
 
-# Ordem em que as métricas aparecem no relatório e no LangSmith
 METRIC_KEYS = ["helpfulness", "correctness", "f1_score", "clarity", "precision"]
 
 
@@ -48,7 +27,7 @@ def load_dataset_from_jsonl(jsonl_path: str) -> List[Dict[str, Any]]:
         with open(jsonl_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
-                if line:  # Ignorar linhas vazias
+                if line:
                     example = json.loads(line)
                     examples.append(example)
 
@@ -106,11 +85,6 @@ def pull_prompt_from_langsmith(client: Client, prompt_name: str) -> ChatPromptTe
     try:
         print(f"   Puxando prompt do LangSmith Hub: {prompt_name}")
 
-        # dangerously_pull_public_prompt=True é obrigatório sempre que o identificador
-        # tem dono explícito ("owner/nome"). O LangSmith bloqueia esse pull por padrão
-        # porque um prompt do Hub é um objeto LangChain serializado, que pode vir de
-        # terceiros. Como aqui o prompt é o seu (ou o prompt semente do desafio),
-        # o risco é conhecido e aceito.
         prompt = client.pull_prompt(prompt_name, dangerously_pull_public_prompt=True)
 
         print(f"   ✓ Prompt carregado com sucesso")
@@ -148,12 +122,7 @@ def pull_prompt_from_langsmith(client: Client, prompt_name: str) -> ChatPromptTe
 
 
 def build_target(prompt_template: ChatPromptTemplate, llm: Any):
-    """
-    Monta a função que o LangSmith executa para cada exemplo do dataset.
-
-    Recebe os inputs do exemplo (ex: {"bug_report": "..."}) e devolve a saída
-    do modelo num dicionário. Cada chamada vira um run dentro do experimento.
-    """
+    """Monta a função que o LangSmith executa para cada exemplo do dataset."""
     chain = prompt_template | llm
 
     def target(inputs: dict) -> dict:
@@ -164,14 +133,7 @@ def build_target(prompt_template: ChatPromptTemplate, llm: Any):
 
 
 def evaluate_all_metrics(inputs: dict, outputs: dict, reference_outputs: dict) -> Dict[str, Any]:
-    """
-    Avaliador do LangSmith: roda os três juízes uma única vez por exemplo e
-    devolve as 5 métricas de uma vez.
-
-    O LangSmith grava cada item da lista "results" como um feedback separado,
-    então as 5 notas aparecem por exemplo no dashboard e são agregadas
-    automaticamente no experimento.
-    """
+    """Avaliador do LangSmith: roda os três juízes uma única vez por exemplo e"""
     question = (inputs or {}).get("bug_report", "")
     answer = (outputs or {}).get("answer", "") or ""
     reference = (reference_outputs or {}).get("reference", "")
@@ -193,7 +155,6 @@ def evaluate_all_metrics(inputs: dict, outputs: dict, reference_outputs: dict) -
         "clarity": clarity["score"],
         "precision": precision["score"],
     }
-    # Métricas derivadas das métricas base
     scores["helpfulness"] = round((scores["clarity"] + scores["precision"]) / 2, 4)
     scores["correctness"] = round((scores["f1_score"] + scores["precision"]) / 2, 4)
 
@@ -214,11 +175,7 @@ def evaluate_all_metrics(inputs: dict, outputs: dict, reference_outputs: dict) -
 
 
 def run_experiment(client: Client, prompt_name: str, dataset_name: str):
-    """
-    Executa o prompt contra o dataset como um experimento do LangSmith.
-
-    Devolve (scores_medios, url_do_experimento).
-    """
+    """Executa o prompt contra o dataset como um experimento do LangSmith."""
     print(f"\n🔍 Avaliando: {prompt_name}")
 
     prompt_template = pull_prompt_from_langsmith(client, prompt_name)
@@ -231,8 +188,6 @@ def run_experiment(client: Client, prompt_name: str, dataset_name: str):
         data=dataset_name,
         evaluators=[evaluate_all_metrics],
         experiment_prefix=prompt_name.replace("/", "-"),
-        # Sequencial de propósito: os planos gratuitos de LLM costumam ter limite
-        # baixo de requisições por minuto. Se o seu limite permitir, suba esse valor.
         max_concurrency=1,
         metadata={
             "prompt": prompt_name,

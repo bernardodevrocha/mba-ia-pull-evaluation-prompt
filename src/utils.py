@@ -1,7 +1,3 @@
-"""
-Funções auxiliares para o projeto de otimização de prompts.
-"""
-
 import os
 import yaml
 import json
@@ -13,15 +9,7 @@ load_dotenv()
 
 
 def load_yaml(file_path: str) -> Optional[Dict[str, Any]]:
-    """
-    Carrega arquivo YAML.
-
-    Args:
-        file_path: Caminho do arquivo YAML
-
-    Returns:
-        Dicionário com conteúdo do YAML ou None se erro
-    """
+    """Carrega arquivo YAML."""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
@@ -38,16 +26,7 @@ def load_yaml(file_path: str) -> Optional[Dict[str, Any]]:
 
 
 def save_yaml(data: Dict[str, Any], file_path: str) -> bool:
-    """
-    Salva dados em arquivo YAML.
-
-    Args:
-        data: Dados para salvar
-        file_path: Caminho do arquivo de saída
-
-    Returns:
-        True se sucesso, False caso contrário
-    """
+    """Salva dados em arquivo YAML."""
     try:
         output_file = Path(file_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -62,15 +41,7 @@ def save_yaml(data: Dict[str, Any], file_path: str) -> bool:
 
 
 def check_env_vars(required_vars: list) -> bool:
-    """
-    Verifica se variáveis de ambiente obrigatórias estão configuradas.
-
-    Args:
-        required_vars: Lista de variáveis obrigatórias
-
-    Returns:
-        True se todas configuradas, False caso contrário
-    """
+    """Verifica se variáveis de ambiente obrigatórias estão configuradas."""
     missing_vars = []
 
     for var in required_vars:
@@ -88,44 +59,20 @@ def check_env_vars(required_vars: list) -> bool:
 
 
 def format_score(score: float, threshold: float = 0.8) -> str:
-    """
-    Formata score com indicador visual de aprovação.
-
-    Args:
-        score: Score entre 0.0 e 1.0
-        threshold: Limite mínimo para aprovação
-
-    Returns:
-        String formatada com score e símbolo
-    """
+    """Formata score com indicador visual de aprovação."""
     symbol = "✓" if score >= threshold else "✗"
     return f"{score:.2f} {symbol}"
 
 
 def print_section_header(title: str, char: str = "=", width: int = 50):
-    """
-    Imprime cabeçalho de seção formatado.
-
-    Args:
-        title: Título da seção
-        char: Caractere para a linha
-        width: Largura da linha
-    """
+    """Imprime cabeçalho de seção formatado."""
     print("\n" + char * width)
     print(title)
     print(char * width + "\n")
 
 
 def validate_prompt_structure(prompt_data: Dict[str, Any]) -> tuple[bool, list]:
-    """
-    Valida estrutura básica de um prompt.
-
-    Args:
-        prompt_data: Dados do prompt
-
-    Returns:
-        (is_valid, errors) - Tupla com status e lista de erros
-    """
+    """Valida estrutura básica de um prompt."""
     errors = []
 
     required_fields = ['description', 'system_prompt', 'version']
@@ -148,15 +95,7 @@ def validate_prompt_structure(prompt_data: Dict[str, Any]) -> tuple[bool, list]:
 
 
 def extract_json_from_response(response_text: str) -> Optional[Dict[str, Any]]:
-    """
-    Extrai JSON de uma resposta de LLM que pode conter texto adicional.
-
-    Args:
-        response_text: Texto da resposta do LLM
-
-    Returns:
-        Dicionário extraído ou None se não encontrar JSON válido
-    """
+    """Extrai JSON de uma resposta de LLM que pode conter texto adicional."""
     try:
         return json.loads(response_text)
     except json.JSONDecodeError:
@@ -174,19 +113,7 @@ def extract_json_from_response(response_text: str) -> Optional[Dict[str, Any]]:
 
 
 def get_llm(model: Optional[str] = None, temperature: float = 0.0):
-    """
-    Retorna uma instância de LLM configurada baseada no provider.
-
-    Args:
-        model: Nome do modelo (opcional, usa LLM_MODEL do .env por padrão)
-        temperature: Temperatura para geração (padrão: 0.0 para determinístico)
-
-    Returns:
-        Instância de ChatOpenAI ou ChatGoogleGenerativeAI
-
-    Raises:
-        ValueError: Se provider não for suportado ou API key não configurada
-    """
+    """Retorna uma instância de LLM configurada baseada no provider."""
     provider = os.getenv('LLM_PROVIDER', 'openai').lower()
     model_name = model or os.getenv('LLM_MODEL', '')
 
@@ -217,6 +144,20 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0):
 
     elif provider == 'google':
         from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.outputs import ChatGeneration, ChatResult
+
+        class ChatGoogleTextContent(ChatGoogleGenerativeAI):
+            # Gemini 3+ devolve content como lista de blocos; evaluate.py e metrics.py esperam string
+            def _generate(self, *args, **kwargs) -> ChatResult:
+                result = super()._generate(*args, **kwargs)
+                result.generations = [
+                    ChatGeneration(
+                        message=g.message.model_copy(update={"content": str(g.message.text)}),
+                        generation_info=g.generation_info,
+                    )
+                    for g in result.generations
+                ]
+                return result
 
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
@@ -225,7 +166,7 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0):
                 "Obtenha uma chave em: https://aistudio.google.com/app/apikey"
             )
 
-        return ChatGoogleGenerativeAI(
+        return ChatGoogleTextContent(
             model=model_name,
             temperature=temperature,
             google_api_key=api_key
@@ -239,14 +180,6 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0):
 
 
 def get_eval_llm(temperature: float = 0.0):
-    """
-    Retorna LLM configurado especificamente para avaliação (usa EVAL_MODEL).
-
-    Args:
-        temperature: Temperatura para geração
-
-    Returns:
-        Instância de LLM configurada para avaliação
-    """
+    """Retorna LLM configurado especificamente para avaliação (usa EVAL_MODEL)."""
     eval_model = os.getenv('EVAL_MODEL', '')
     return get_llm(model=eval_model, temperature=temperature)
